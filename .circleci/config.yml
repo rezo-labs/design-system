@@ -1,0 +1,74 @@
+# Javascript Node CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-javascript/ for more details
+#
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/node:8
+
+    steps:
+      - checkout
+      - run:
+          name: "Pull Submodules"
+          command: |
+            git submodule init
+            git submodule update --remote
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package.json" }}
+            - v1-dependencies-
+
+      - run: yarn install
+
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "package.json" }}
+
+      - run:
+          name: Run ESLint
+          command: yarn lint
+      - run:
+          name: Run Tests
+          command: yarn test:client
+      - run:
+          name: Build Styleguidist
+          command: yarn styleguidist:build
+      - persist_to_workspace:
+          root: styleguide
+          paths:
+            - *
+  deploy:
+    docker:
+      - image: circleci/node:8
+
+    steps:
+      - checkout
+      - attach_workspace:
+          at: styleguide
+      - run:
+          name: Install Surge globally
+          command: sudo npm install -g surge
+      - run:
+          name: Deploy to Surge
+          command: |
+            ls
+            echo "Deploying to rezo-${CIRCLE_BRANCH/_/}.surge.sh"
+            surge --project ./styleguide --domain rezo-$(echo "${CIRCLE_BRANCH/_/}").surge.sh
+
+workflows:
+  version: 2
+  build_and_deploy:
+    jobs:
+      - build:
+          filters:
+            branches:
+              ignore: master
+      - deploy:
+          requires:
+            - build
+          filters:
+            branches:
+              only: /.+-final/
